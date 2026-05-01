@@ -1,0 +1,45 @@
+name: Update ADH Filter
+on:
+  schedule:
+    - cron: '0 0 * * *' # 每天凌晨自动运行一次
+  workflow_dispatch: # 允许你随时点击按钮手动触发更新
+
+jobs:
+  convert_and_push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Download and Convert
+        run: |
+          # 1. 下载源文件
+          curl -sL "https://raw.githubusercontent.com/zirawell/R-Store/refs/heads/main/Rule/QuanX/Adblock/All/filter/allAdBlock.list" -o raw_list.txt
+          
+          # 2. 写入文件头
+          echo "! Title: AdGuardHomeAllAdBlockList" > AdGuardHomeAllAdBlockList.txt
+          echo "! Last Modified: $(date)" >> AdGuardHomeAllAdBlockList.txt
+          echo "! Source: zirawell R-Store" >> AdGuardHomeAllAdBlockList.txt
+          echo "!" >> AdGuardHomeAllAdBlockList.txt
+
+          # 3. 转换逻辑
+          # 处理 host 和 host-suffix (格式: host, domain, reject)
+          grep -Ei "^host" raw_list.txt | awk -F',' '{print "||" $2 "^"}' | sed 's/ //g' >> AdGuardHomeAllAdBlockList.txt
+          
+          # 处理 ip-cidr (格式: ip-cidr, 1.2.3.4/32, reject)
+          grep -Ei "^ip-cidr" raw_list.txt | awk -F',' '{print $2}' | sed 's/ //g' >> AdGuardHomeAllAdBlockList.txt
+          
+          # 4. 去重并保留文件头
+          # 提取前 4 行文件头
+          head -n 4 AdGuardHomeAllAdBlockList.txt > header.tmp
+          # 对第 5 行以后的内容去重并排序
+          tail -n +5 AdGuardHomeAllAdBlockList.txt | sort -u >> header.tmp
+          mv header.tmp AdGuardHomeAllAdBlockList.txt
+
+      - name: Commit and Push
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add AdGuardHomeAllAdBlockList.txt
+          git commit -m "Auto-update: AdGuardHomeAllAdBlockList $(date +'%Y-%m-%d')" || exit 0
+          git push
